@@ -52,7 +52,8 @@ elseif(${ROS_VERSION} EQUAL 2)
   find_package(carla_ros_scenario_runner_types COMPONENTS)
   find_package(pluginlib REQUIRED)
   find_package(rviz_ogre_vendor REQUIRED)
-
+  find_package(tf2_geometry_msgs REQUIRED)
+  
   set(CMAKE_AUTOMOC ON)
 
   find_package(Qt5 REQUIRED Core Widgets)
@@ -73,8 +74,15 @@ elseif(${ROS_VERSION} EQUAL 2)
   pluginlib_export_plugin_description_file(rviz_common
                                            plugin_description_ros2.xml)
 
-  ament_target_dependencies(rviz_carla_plugin rclcpp carla_msgs nav_msgs
-                            carla_ros_scenario_runner_types rviz_common)
+  ament_target_dependencies(
+    rviz_carla_plugin
+    rclcpp
+    carla_msgs
+    nav_msgs
+    carla_ros_scenario_runner_types
+    rviz_common
+    tf2_geometry_msgs)
+
 
   ament_export_libraries(${PROJECT_NAME})
 
