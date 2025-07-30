@@ -1,4 +1,0 @@
-[submodule "carla_msgs"]
-	path = carla_msgs
-	url = https://github.com/ZahraBoroujeni/ros-carla-msgs
-	branch = master
