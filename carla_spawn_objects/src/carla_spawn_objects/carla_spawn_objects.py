@@ -135,7 +135,11 @@ class CarlaSpawnObjects(CompatibleNode):
                 spawn_object_request.id = vehicle["id"]
                 spawn_object_request.attach_to = 0
                 spawn_object_request.random_pose = False
-
+                
+                # for attribute, value in vehicle["attributes"].items():
+                #     spawn_object_request.attributes.append(
+                #         KeyValue(key=str(attribute), value=str(value)))
+                    
                 spawn_point = None
 
                 # check if there's a spawn_point corresponding to this vehicle

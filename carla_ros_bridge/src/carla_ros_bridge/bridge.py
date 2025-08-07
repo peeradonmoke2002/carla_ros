@@ -37,6 +37,7 @@ from carla_msgs.msg import CarlaControl, CarlaWeatherParameters
 from carla_msgs.srv import SpawnObject, DestroyObject, GetBlueprints
 from rosgraph_msgs.msg import Clock
 
+import time
 
 class CarlaRosBridge(CompatibleNode):
 
@@ -404,15 +405,28 @@ def main(args=None):
                                        ["hero", "ego_vehicle", "hero1", "hero2", "hero3"])
     parameters["ego_vehicle"] = {"role_name": role_name}
 
-    carla_bridge.loginfo("Trying to connect to {host}:{port}".format(
-        host=parameters['host'], port=parameters['port']))
+    # carla_bridge.loginfo("Trying to connect to {host}:{port}".format(
+    #     host=parameters['host'], port=parameters['port']))
 
     try:
-        carla_client = carla.Client(
-            host=parameters['host'],
-            port=parameters['port'])
-        carla_client.set_timeout(parameters['timeout'])
-
+        # carla_client = carla.Client(
+        #     host=parameters['host'],
+        #     port=parameters['port'])
+        # carla_client.set_timeout(parameters['timeout'])
+        start_time = time.time()
+        while parameters['timeout'] * 10 > (time.time() - start_time):
+            try:
+                carla_client = carla.Client( 
+                    host=parameters['host'],
+                    port=parameters['port'])
+                carla_client.set_timeout(parameters['timeout'])
+                carla_bridge.loginfo("Trying to connect to {host}:{port}".format(
+                    host=parameters['host'], port=parameters['port']))
+                carla_client.get_server_version()
+                break
+            except RuntimeError:
+                # if failed to connect, then try again
+                pass
         # check carla version
         dist = pkg_resources.get_distribution("carla")
         if LooseVersion(dist.version) != LooseVersion(CarlaRosBridge.CARLA_VERSION):

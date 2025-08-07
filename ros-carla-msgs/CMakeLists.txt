@@ -26,6 +26,7 @@ set(MSG_FILES
     CarlaTrafficLightStatus.msg
     CarlaTrafficLightStatusList.msg
     CarlaWalkerControl.msg
+    CarlaEgoVehicleSteering.msg
     CarlaWeatherParameters.msg)
 
 if(${ROS_VERSION} EQUAL 1)
