@@ -24,7 +24,8 @@ from carla_msgs.msg import (
     CarlaEgoVehicleInfoWheel,
     CarlaEgoVehicleControl,
     CarlaEgoVehicleStatus,
-    CarlaEgoVehicleSteering
+    CarlaEgoVehicleSteering,
+    CarlaSteeringCurve
 )
 from std_msgs.msg import Bool  # pylint: disable=import-error
 from std_msgs.msg import ColorRGBA  # pylint: disable=import-error
@@ -190,6 +191,12 @@ class EgoVehicle(Vehicle):
             vehicle_info.center_of_mass.x = vehicle_physics.center_of_mass.x
             vehicle_info.center_of_mass.y = vehicle_physics.center_of_mass.y
             vehicle_info.center_of_mass.z = vehicle_physics.center_of_mass.z
+            # add steering curve
+            steering_curve = CarlaSteeringCurve()
+            curve = vehicle_physics.steering_curve[0]
+            steering_curve.x = float(curve.x)
+            steering_curve.y = float(curve.y)
+            vehicle_info.steering_curves.append(steering_curve)
 
             self.vehicle_info_publisher.publish(vehicle_info)
 

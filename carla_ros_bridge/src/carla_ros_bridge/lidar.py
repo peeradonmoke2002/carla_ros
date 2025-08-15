@@ -71,7 +71,7 @@ class Lidar(Sensor):
         :type carla_lidar_measurement: carla.LidarMeasurement
         """
         # header = self.get_msg_header(timestamp=carla_lidar_measurement.timestamp)
-        header = self.get_msg_header(frame_id="velodyne_top", timestamp=carla_lidar_measurement.timestamp)
+        header = self.get_msg_header(frame_id="velodyne_top_changed", timestamp=carla_lidar_measurement.timestamp)
         fields = [
             PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
             PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),

@@ -66,7 +66,7 @@ class ImuSensor(Sensor):
         """
         imu_msg = Imu()
         # imu_msg.header = self.get_msg_header(timestamp=carla_imu_measurement.timestamp)
-        imu_msg.header = self.get_msg_header(frame_id="tamagawa/imu_link", timestamp=carla_imu_measurement.timestamp)
+        imu_msg.header = self.get_msg_header(frame_id="tamagawa/imu_link_changed", timestamp=carla_imu_measurement.timestamp)
 
         # Carla uses a left-handed coordinate convention (X forward, Y right, Z up).
         # Here, these measurements are converted to the right-handed ROS convention
