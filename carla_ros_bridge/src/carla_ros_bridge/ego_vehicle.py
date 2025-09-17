@@ -100,59 +100,58 @@ class EgoVehicle(Vehicle):
             self.get_topic_prefix() + "/enable_autopilot",
             self.enable_autopilot_updated,
             qos_profile=10)
-        # --- Autoware status publishers ---
 
         # --- Autoware status publishers ---
-        self.aw_turn_pub = node.new_publisher(
-            TurnIndicatorsReport, "/vehicle/status/turn_indicators_status", qos_profile=10)
-        self.aw_hazard_pub = node.new_publisher(
-            HazardLightsReport, "/vehicle/status/hazard_lights_status", qos_profile=10)
+        # self.aw_turn_pub = node.new_publisher(
+        #     TurnIndicatorsReport, "/vehicle/status/turn_indicators_status", qos_profile=10)
+        # self.aw_hazard_pub = node.new_publisher(
+        #     HazardLightsReport, "/vehicle/status/hazard_lights_status", qos_profile=10)
 
-        self.turn_cmd_sub = node.new_subscription(
-            TurnIndicatorsCommand,
-            "/control/command/turn_indicators_cmd",
-            self._on_turn_cmd,
-            qos_profile=10
-        )
-        self.hazard_cmd_sub = node.new_subscription(
-            HazardLightsCommand,
-            "/control/command/hazard_lights_cmd",
-            self._on_hazard_cmd,
-            qos_profile=10
-        )
-        self._hazard = False
-        self._left = False
-        self._right = False
+        # self.turn_cmd_sub = node.new_subscription(
+        #     TurnIndicatorsCommand,
+        #     "/control/command/turn_indicators_cmd",
+        #     self._on_turn_cmd,
+        #     qos_profile=10
+        # )
+        # self.hazard_cmd_sub = node.new_subscription(
+        #     HazardLightsCommand,
+        #     "/control/command/hazard_lights_cmd",
+        #     self._on_hazard_cmd,
+        #     qos_profile=10
+        # )
+        # self._hazard = False
+        # self._left = False
+        # self._right = False
         
-    def _apply_lights(self):
-        flags = 0
-        if self._hazard:
-            flags |= carla.VehicleLightState.LeftBlinker | carla.VehicleLightState.RightBlinker
-        else:
-            if self._left:  flags |= carla.VehicleLightState.LeftBlinker
-            if self._right: flags |= carla.VehicleLightState.RightBlinker
-        # optional: make indicators visible
-        if flags:
-            flags |= carla.VehicleLightState.Position | carla.VehicleLightState.LowBeam
-        self.carla_actor.set_light_state(carla.VehicleLightState(flags))
+    # def _apply_lights(self):
+    #     flags = 0
+    #     if self._hazard:
+    #         flags |= carla.VehicleLightState.LeftBlinker | carla.VehicleLightState.RightBlinker
+    #     else:
+    #         if self._left:  flags |= carla.VehicleLightState.LeftBlinker
+    #         if self._right: flags |= carla.VehicleLightState.RightBlinker
+    #     # optional: make indicators visible
+    #     if flags:
+    #         flags |= carla.VehicleLightState.Position | carla.VehicleLightState.LowBeam
+    #     self.carla_actor.set_light_state(carla.VehicleLightState(flags))
 
 
-    def _on_turn_cmd(self, msg: TurnIndicatorsCommand):
-        # command: 1=DISABLE, 2=ENABLE_LEFT, 3=ENABLE_RIGHT
-        if msg.command == TurnIndicatorsCommand.DISABLE:
-            self._left = self._right = False
-        elif msg.command == TurnIndicatorsCommand.ENABLE_LEFT:
-            self._left, self._right = True, False
-        elif msg.command == TurnIndicatorsCommand.ENABLE_RIGHT:
-            self._left, self._right = False, True
-        self._apply_lights()
+    # def _on_turn_cmd(self, msg: TurnIndicatorsCommand):
+    #     # command: 1=DISABLE, 2=ENABLE_LEFT, 3=ENABLE_RIGHT
+    #     if msg.command == TurnIndicatorsCommand.DISABLE:
+    #         self._left = self._right = False
+    #     elif msg.command == TurnIndicatorsCommand.ENABLE_LEFT:
+    #         self._left, self._right = True, False
+    #     elif msg.command == TurnIndicatorsCommand.ENABLE_RIGHT:
+    #         self._left, self._right = False, True
+    #     self._apply_lights()
 
 
 
-    def _on_hazard_cmd(self, msg: HazardLightsCommand):
-        # command: 1=DISABLE, 2=ENABLE
-        self._hazard = (msg.command == HazardLightsCommand.ENABLE)
-        self._apply_lights()
+    # def _on_hazard_cmd(self, msg: HazardLightsCommand):
+    #     # command: 1=DISABLE, 2=ENABLE
+    #     self._hazard = (msg.command == HazardLightsCommand.ENABLE)
+    #     self._apply_lights()
 
     def get_marker_color(self):
         """
@@ -189,24 +188,24 @@ class EgoVehicle(Vehicle):
         vehicle_status.control.manual_gear_shift = self.carla_actor.get_control().manual_gear_shift
         self.vehicle_status_publisher.publish(vehicle_status)
         # --- Publish Autoware turn indicators & hazard lights ---
-        ls = self.carla_actor.get_light_state()
-        left_on  = bool(ls & carla.VehicleLightState.LeftBlinker)
-        right_on = bool(ls & carla.VehicleLightState.RightBlinker)
+        # ls = self.carla_actor.get_light_state()
+        # left_on  = bool(ls & carla.VehicleLightState.LeftBlinker)
+        # right_on = bool(ls & carla.VehicleLightState.RightBlinker)
 
-        ti = TurnIndicatorsReport()
-        ti.stamp = header.stamp
-        if left_on and not right_on:
-          ti.report = TurnIndicatorsReport.ENABLE_LEFT
-        elif right_on and not left_on:
-          ti.report = TurnIndicatorsReport.ENABLE_RIGHT
-        else:
-           ti.report = TurnIndicatorsReport.DISABLE
-        self.aw_turn_pub.publish(ti)
+        # ti = TurnIndicatorsReport()
+        # ti.stamp = header.stamp
+        # if left_on and not right_on:
+        #   ti.report = TurnIndicatorsReport.ENABLE_LEFT
+        # elif right_on and not left_on:
+        #   ti.report = TurnIndicatorsReport.ENABLE_RIGHT
+        # else:
+        #    ti.report = TurnIndicatorsReport.DISABLE
+        # self.aw_turn_pub.publish(ti)
 
-        hz = HazardLightsReport()
-        hz.stamp = header.stamp
-        hz.report = HazardLightsReport.ENABLE if (left_on and right_on) else HazardLightsReport.DISABLE
-        self.aw_hazard_pub.publish(hz)
+        # hz = HazardLightsReport()
+        # hz.stamp = header.stamp
+        # hz.report = HazardLightsReport.ENABLE if (left_on and right_on) else HazardLightsReport.DISABLE
+        # self.aw_hazard_pub.publish(hz)
 
         vehicle_steering = CarlaEgoVehicleSteering(
             header=self.get_msg_header("map", timestamp=timestamp))
@@ -301,8 +300,8 @@ class EgoVehicle(Vehicle):
         self.node.destroy_subscription(self.manual_control_subscriber)
         self.node.destroy_publisher(self.vehicle_status_publisher)
         self.node.destroy_publisher(self.vehicle_info_publisher)
-        self.node.destroy_publisher(self.aw_turn_pub)
-        self.node.destroy_publisher(self.aw_hazard_pub)
+        # self.node.destroy_publisher(self.aw_turn_pub)
+        # self.node.destroy_publisher(self.aw_hazard_pub)
         Vehicle.destroy(self)
 
     def control_command_override(self, enable):
