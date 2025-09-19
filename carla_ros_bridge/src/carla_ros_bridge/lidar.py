@@ -16,6 +16,10 @@ import numpy
 from carla_ros_bridge.sensor import Sensor, create_cloud
 
 from sensor_msgs.msg import PointCloud2, PointField
+from ros_compatibility.qos import (
+    QoSProfile,
+    ReliabilityPolicy)
+
 
 
 class Lidar(Sensor):
@@ -53,11 +57,16 @@ class Lidar(Sensor):
 
         self.lidar_publisher = node.new_publisher(PointCloud2,
                                                   self.get_topic_prefix(),
-                                                  qos_profile=10)
+                                                  qos_profile=self._create_sensor_qos())
         self.listen()
         self.channels = int(self.carla_actor.attributes.get('channels'))
         
-        
+    def _create_sensor_qos(self):
+        """Create QoS profile for sensor data with BEST_EFFORT reliability."""
+        qos = QoSProfile(depth=10)
+        qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        return qos
+    
     def destroy(self):
         super(Lidar, self).destroy()
         self.node.destroy_publisher(self.lidar_publisher)
