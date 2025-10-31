@@ -57,7 +57,7 @@ class Lidar(Sensor):
 
         self.lidar_publisher = node.new_publisher(PointCloud2,
                                                   self.get_topic_prefix(),
-                                                  qos_profile=self._create_sensor_qos())
+                                                  qos_profile=10)
         self.listen()
         self.channels = int(self.carla_actor.attributes.get('channels'))
         
