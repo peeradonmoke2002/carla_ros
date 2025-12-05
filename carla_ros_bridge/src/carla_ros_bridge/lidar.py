@@ -91,24 +91,27 @@ class Lidar(Sensor):
         ]
 
 
-        lidar_data = numpy.fromstring(
+        # Use frombuffer instead of fromstring for better performance
+        # Note: frombuffer returns read-only array, so we need to make a copy
+        lidar_data = numpy.frombuffer(
             bytes(carla_lidar_measurement.raw_data), dtype=numpy.float32)
-        lidar_data = numpy.reshape(
-            lidar_data, (int(lidar_data.shape[0] / 4), 4))
-        intensity = lidar_data[:, 3]
-        intensity = (
-            numpy.clip(intensity, 0, 1) * 255
-        )  # CARLA lidar intensity values are between 0 and 1
-        intensity = intensity.astype(numpy.uint8).reshape(-1, 1)
+        lidar_data = lidar_data.reshape(-1, 4).copy()  # Make writable copy
 
-        return_type = numpy.zeros((lidar_data.shape[0], 1), dtype=numpy.uint8)
-        channel = numpy.empty((0, 1), dtype=numpy.uint16)
+        num_points = lidar_data.shape[0]
 
+        # Vectorized intensity processing (CARLA lidar intensity values are between 0 and 1)
+        intensity = numpy.clip(lidar_data[:, 3], 0, 1)
+        intensity = (intensity * 255).astype(numpy.uint8).reshape(-1, 1)
+
+        return_type = numpy.zeros((num_points, 1), dtype=numpy.uint8)
+
+        # Pre-allocate channel array for better performance
+        channel = numpy.zeros((num_points, 1), dtype=numpy.uint16)
+        offset = 0
         for i in range(self.channels):
             current_ring_points_count = carla_lidar_measurement.get_point_count(i)
-            channel = numpy.vstack(
-                (channel, numpy.full((current_ring_points_count, 1), i, dtype=numpy.uint16))
-            )
+            channel[offset:offset+current_ring_points_count] = i
+            offset += current_ring_points_count
 
         lidar_data = numpy.hstack((lidar_data[:, :3], intensity, return_type, channel))
         lidar_data[:, 1] *= -1

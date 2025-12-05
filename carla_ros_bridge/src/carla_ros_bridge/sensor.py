@@ -225,7 +225,8 @@ class Sensor(Actor):
              self.next_data_expected_time < timestamp):
             while True:
                 try:
-                    carla_sensor_data = self.queue.get(timeout=1.0)
+                    # Reduced timeout to match simulation tick rate (was 1.0s)
+                    carla_sensor_data = self.queue.get(timeout=0.15)
                     if carla_sensor_data.frame == frame:
                         self.node.logdebug("{}({}): process {}".format(self.__class__.__name__,
                                                                        self.get_id(), frame))
@@ -234,7 +235,7 @@ class Sensor(Actor):
                         self.sensor_data_updated(carla_sensor_data)
                         return
                     elif carla_sensor_data.frame < frame:
-                        self.node.logwarn("{}({}): skipping old frame {}, expected {}".format(
+                        self.node.logdebug("{}({}): skipping old frame {}, expected {}".format(
                             self.__class__.__name__,
                             self.get_id(),
                             carla_sensor_data.frame,
