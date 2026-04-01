@@ -463,7 +463,17 @@ def main(args=None):
                 if carla_world.get_map().name != parameters["town"]:
                     carla_bridge.loginfo("Loading town '{}' (previous: '{}').".format(
                         parameters["town"], carla_world.get_map().name))
-                    carla_world = carla_client.load_world(parameters["town"])
+                    if parameters["town"].endswith("_Opt"):
+                        carla_bridge.loginfo(
+                            "Layered map detected ('{}'), loading with all layers.".format(
+                                parameters["town"]))
+                        carla_world = carla_client.load_world(
+                            parameters["town"], carla.MapLayer.All)
+                    else:
+                        carla_world = carla_client.load_world(parameters["town"])
+            if parameters["town"].endswith("_Opt"):
+                carla_bridge.loginfo("Unloading parked vehicles layer for layered map.")
+                carla_world.unload_map_layer(carla.MapLayer.ParkedVehicles)
             carla_world.tick()
 
         carla_bridge.initialize_bridge(carla_client.get_world(), parameters)
