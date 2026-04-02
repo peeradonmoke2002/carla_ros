@@ -139,12 +139,7 @@ class Sensor(Actor):
         return transform
 
     def publish_tf(self, pose, timestamp):
-        transform = self.get_ros_transform(pose, timestamp)
-        try:
-            self._tf_broadcaster.sendTransform(transform)
-        except roscomp.exceptions.ROSException:
-            if roscomp.ok():
-                self.node.logwarn("Sensor {} failed to send transform.".format(self.uid))
+        pass  # sensor TFs handled by sensor_kit_description
 
     def listen(self):
         self.carla_actor.listen(self._callback_sensor_data)
