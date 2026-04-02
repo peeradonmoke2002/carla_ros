@@ -463,17 +463,31 @@ def main(args=None):
                 if carla_world.get_map().name != parameters["town"]:
                     carla_bridge.loginfo("Loading town '{}' (previous: '{}').".format(
                         parameters["town"], carla_world.get_map().name))
-                    if parameters["town"].endswith("_Opt"):
-                        carla_bridge.loginfo(
-                            "Layered map detected ('{}'), loading with all layers.".format(
-                                parameters["town"]))
-                        carla_world = carla_client.load_world(
-                            parameters["town"], carla.MapLayer.All)
-                    else:
-                        carla_world = carla_client.load_world(parameters["town"])
-            if parameters["town"].endswith("_Opt"):
-                carla_bridge.loginfo("Unloading parked vehicles layer for layered map.")
-                carla_world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+                    carla_world = carla_client.load_world(parameters["town"])
+                # For layered maps: ensure all layers are loaded, then unload only ParkedVehicles.
+                # This runs even when the map was already loaded (name matched), because the
+                # previous session may have loaded with minimum layers only.
+                if parameters["town"].endswith("_Opt"):
+                    carla_bridge.loginfo(
+                        "Layered map ('{}'): loading all layers then unloading ParkedVehicles.".format(
+                            parameters["town"]))
+                    carla_world.load_map_layer(carla.MapLayer.All)
+                    carla_world.tick()  # apply before checking/unloading
+                    parked_before = carla_world.get_environment_objects(carla.CityObjectLabel.Car)
+                    carla_bridge.loginfo(
+                        "Layer check BEFORE unload — parked car objects: {}".format(
+                            len(parked_before)))
+                    carla_bridge.loginfo(
+                        "Unloading ParkedVehicles layer (value={})...".format(
+                            int(carla.MapLayer.ParkedVehicles)))
+                    carla_world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+                    carla_world.tick()  # apply unload before checking
+                    parked_after = carla_world.get_environment_objects(carla.CityObjectLabel.Car)
+                    carla_bridge.loginfo(
+                        "Layer check AFTER unload  — parked car objects: {} (removed: {}) {}".format(
+                            len(parked_after),
+                            len(parked_before) - len(parked_after),
+                            "✓ OK" if len(parked_after) < len(parked_before) else "⚠ no change"))
             carla_world.tick()
 
         carla_bridge.initialize_bridge(carla_client.get_world(), parameters)
