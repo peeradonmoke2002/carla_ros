@@ -103,6 +103,9 @@ class CarlaRosBridge(CompatibleNode):
             self.loginfo(
                 "Passive mode is enabled and CARLA world is configured in synchronous mode. This configuration requires another client ticking the CARLA world.")
 
+        self.prev_tick_wall_time = None
+        self.max_real_delta_seconds = self.parameters.get("max_real_delta_seconds", self.parameters["fixed_delta_seconds"])
+
         self.carla_control_queue = queue.Queue()
 
         # actor factory
@@ -264,6 +267,14 @@ class CarlaRosBridge(CompatibleNode):
                                 actor_id)
 
             self.actor_factory.update_available_objects()
+
+            if self.prev_tick_wall_time:
+                delta_step = time.time() - self.prev_tick_wall_time
+                if delta_step < self.max_real_delta_seconds:
+                    # Add a wait to match the max_real_delta_seconds
+                    time.sleep(self.max_real_delta_seconds - delta_step)
+            self.prev_tick_wall_time = time.time()
+
             frame = self.carla_world.tick()
 
             world_snapshot = self.carla_world.get_snapshot()
@@ -399,6 +410,8 @@ def main(args=None):
         'synchronous_mode_wait_for_vehicle_control_command', False)
     parameters['fixed_delta_seconds'] = carla_bridge.get_param('fixed_delta_seconds',
                                                                0.05)
+    parameters['max_real_delta_seconds'] = carla_bridge.get_param('max_real_delta_seconds',
+                                                                   parameters['fixed_delta_seconds'])
     parameters['register_all_sensors'] = carla_bridge.get_param('register_all_sensors', True)
     parameters['town'] = carla_bridge.get_param('town', 'Town01')
     role_name = carla_bridge.get_param('ego_vehicle_role_name',
@@ -409,10 +422,6 @@ def main(args=None):
     #     host=parameters['host'], port=parameters['port']))
 
     try:
-        # carla_client = carla.Client(
-        #     host=parameters['host'],
-        #     port=parameters['port'])
-        # carla_client.set_timeout(parameters['timeout'])
         start_time = time.time()
         while parameters['timeout'] * 10 > (time.time() - start_time):
             try:
@@ -464,6 +473,9 @@ def main(args=None):
                     carla_bridge.loginfo("Loading town '{}' (previous: '{}').".format(
                         parameters["town"], carla_world.get_map().name))
                     carla_world = carla_client.load_world(parameters["town"])
+                    time.sleep(2.0)  # wait for the world to be fully loaded before applying settings and checking layers
+
+
                 # For layered maps: ensure all layers are loaded, then unload only ParkedVehicles.
                 # This runs even when the map was already loaded (name matched), because the
                 # previous session may have loaded with minimum layers only.
