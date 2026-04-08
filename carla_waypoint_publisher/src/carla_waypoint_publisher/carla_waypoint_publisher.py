@@ -1,28 +1,15 @@
-#!/usr/bin/env python
-#
-# Copyright (c) 2019 Intel Corporation
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
+#!/usr/bin/python3
 """
-Generates a plan of waypoints to follow
+Get trajectory/path FROM Autoware and extract waypoints for CARLA visualization.
 
-It uses the current pose of the ego vehicle as starting point. If the
-vehicle is respawned or move, the route is newly calculated.
-
-The goal is either read from the ROS topic `/carla/<ROLE NAME>/move_base_simple/goal`, if available
-(e.g. published by RVIZ via '2D Nav Goal') or a fixed point is used.
-
-The calculated route is published on '/carla/<ROLE NAME>/waypoints'
-
-Additionally, services are provided to interface CARLA waypoints.
+Flow:
+  Autoware (Behavior Planner)
+    ↓ publishes trajectory
+  carla_waypoint_publisher
+    ↓ subscribes + extracts waypoints
+  CARLA visualization
 """
-import math
-import sys
-import threading
-
 import carla
-from agents.navigation.global_route_planner import GlobalRoutePlanner
 
 import carla_common.transforms as trans
 import ros_compatibility as roscomp
@@ -34,36 +21,33 @@ from carla_msgs.msg import CarlaWorldInfo
 from carla_waypoint_types.srv import GetWaypoint, GetActorWaypoint
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
+from autoware_planning_msgs.msg import Trajectory
 
 
-class CarlaToRosWaypointConverter(CompatibleNode):
-
+class CarlaWaypointPublisher(CompatibleNode):
     """
-    This class generates a plan of waypoints to follow.
+    Subscribe to Autoware's trajectory and publish waypoints for CARLA.
 
-    The calculation is done whenever:
-    - the hero vehicle appears
-    - a new goal is set
+    Subscribes to: /planning/scenario_planning/trajectory (or similar)
+    Publishes to: /carla/{role_name}/waypoints
     """
-    WAYPOINT_DISTANCE = 2.0
 
     def __init__(self):
-        """
-        Constructor
-        """
-        super(CarlaToRosWaypointConverter, self).__init__('carla_waypoint_publisher')
+        """Constructor"""
+        super(CarlaWaypointPublisher, self).__init__('carla_waypoint_publisher')
         self.connect_to_carla()
         self.map = self.world.get_map()
         self.ego_vehicle = None
-        self.ego_vehicle_location = None
-        self.on_tick = None
         self.role_name = self.get_param("role_name", 'ego_vehicle')
+
+        # Waypoint publisher
         self.waypoint_publisher = self.new_publisher(
             Path,
             '/carla/{}/waypoints'.format(self.role_name),
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.loginfo(f"Publishing waypoints to /carla/{self.role_name}/waypoints")
 
-        # initialize ros services
+        # Services
         self.get_waypoint_service = self.new_service(
             GetWaypoint,
             '/carla_waypoint_publisher/{}/get_waypoint'.format(self.role_name),
@@ -73,32 +57,27 @@ class CarlaToRosWaypointConverter(CompatibleNode):
             '/carla_waypoint_publisher/{}/get_actor_waypoint'.format(self.role_name),
             self.get_actor_waypoint)
 
-        # set initial goal
-        self.goal = self.world.get_map().get_spawn_points()[0]
-
-        self.current_route = None
-        self.goal_subscriber = self.new_subscription(
-            PoseStamped,
-            "/carla/{}/goal".format(self.role_name),
-            self.on_goal,
+        # Subscribe to Autoware trajectory
+        self.trajectory_subscriber = self.new_subscription(
+            Trajectory,
+            "/planning/scenario_planning/trajectory",
+            self.on_trajectory,
             qos_profile=10)
+        self.loginfo("Subscribed to /planning/scenario_planning/trajectory")
 
-        # use callback to wait for ego vehicle
+        # Ego vehicle finder
+        self.on_tick = None
         self.loginfo("Waiting for ego vehicle...")
         self.on_tick = self.world.on_tick(self.find_ego_vehicle_actor)
 
     def destroy(self):
-        """
-        Destructor
-        """
+        """Destructor"""
         self.ego_vehicle = None
         if self.on_tick:
             self.world.remove_on_tick(self.on_tick)
 
     def get_waypoint(self, req, response=None):
-        """
-        Get the waypoint for a location
-        """
+        """Get the waypoint for a location"""
         carla_position = carla.Location()
         carla_position.x = req.location.x
         carla_position.y = -req.location.y
@@ -115,10 +94,7 @@ class CarlaToRosWaypointConverter(CompatibleNode):
         return response
 
     def get_actor_waypoint(self, req, response=None):
-        """
-        Convenience method to get the waypoint for an actor
-        """
-        # self.loginfo("get_actor_waypoint(): Get waypoint of actor {}".format(req.id))
+        """Convenience method to get the waypoint for an actor"""
         actor = self.world.get_actors().find(req.id)
 
         response = roscomp.get_service_response(GetActorWaypoint)
@@ -133,102 +109,154 @@ class CarlaToRosWaypointConverter(CompatibleNode):
             self.logwarn("get_actor_waypoint(): Actor {} not valid.".format(req.id))
         return response
 
-    def on_goal(self, goal):
-        """
-        Callback for /move_base_simple/goal
+    def on_trajectory(self, trajectory_msg):
+        """Callback: receive trajectory from Autoware and extract waypoints"""
+        if not trajectory_msg.points or len(trajectory_msg.points) == 0:
+            self.logwarn("Received empty trajectory")
+            return
 
-        Receiving a goal (e.g. from RVIZ '2D Nav Goal') triggers a new route calculation.
+        self.loginfo(f"✓ Received trajectory with {len(trajectory_msg.points)} points")
 
-        :return:
-        """
-        self.loginfo("Received goal, trigger rerouting...")
-        carla_goal = trans.ros_pose_to_carla_transform(goal.pose)
-        self.goal = carla_goal
-        self.reroute()
+        # Publish as ROS Path message (for RViz)
+        self.publish_waypoints_from_trajectory(trajectory_msg)
 
-    def reroute(self):
-        """
-        Triggers a rerouting
-        """
-        if self.ego_vehicle is None or self.goal is None:
-            # no ego vehicle, remove route if published
-            self.current_route = None
-            self.publish_waypoints()
-        else:
-            self.current_route = self.calculate_route(self.goal)
-        self.publish_waypoints()
+        # Draw in CARLA world (for visualization in simulator)
+        self.draw_waypoints_in_carla(trajectory_msg)
 
     def find_ego_vehicle_actor(self, _):
-        """
-        Look for an carla actor with name 'ego_vehicle'
-        """
+        """Look for ego vehicle"""
         hero = None
         for actor in self.world.get_actors():
             if actor.attributes.get('role_name') == self.role_name:
                 hero = actor
                 break
 
-        ego_vehicle_changed = False
-        if hero is None and self.ego_vehicle is not None:
-            ego_vehicle_changed = True
-
-        if not ego_vehicle_changed and hero is not None and self.ego_vehicle is None:
-            ego_vehicle_changed = True
-
-        if not ego_vehicle_changed and hero is not None and \
-                self.ego_vehicle is not None and hero.id != self.ego_vehicle.id:
-            ego_vehicle_changed = True
-
-        if ego_vehicle_changed:
-            self.loginfo("Ego vehicle changed.")
+        if hero is not None and self.ego_vehicle is None:
+            self.loginfo("✓ Ego vehicle found")
             self.ego_vehicle = hero
-            self.reroute()
-        elif self.ego_vehicle:
-            current_location = self.ego_vehicle.get_location()
-            if self.ego_vehicle_location:
-                dx = self.ego_vehicle_location.x - current_location.x
-                dy = self.ego_vehicle_location.y - current_location.y
-                distance = math.sqrt(dx * dx + dy * dy)
-                if distance > self.WAYPOINT_DISTANCE:
-                    self.loginfo("Ego vehicle was repositioned.")
-                    self.reroute()
-            self.ego_vehicle_location = current_location
 
-    def calculate_route(self, goal):
+    def draw_waypoints_in_carla(self, trajectory_msg):
+        """Draw waypoints in CARLA world as visual markers"""
+        try:
+            if not trajectory_msg.points or len(trajectory_msg.points) < 2:
+                return
+
+            # Downsample for drawing (every Nth point)
+            downsample_factor = max(1, len(trajectory_msg.points) // 12)  # Max 12 points (sparse like TUM)
+
+            prev_location = None
+
+            for i, traj_point in enumerate(trajectory_msg.points):
+                if i % downsample_factor != 0:
+                    continue
+
+                x = traj_point.pose.position.x
+                y = -traj_point.pose.position.y  # CARLA uses negative Y
+                z = traj_point.pose.position.z + 0.5  # Lift up for visibility
+
+                location = carla.Location(x, y, z)
+
+                # Draw waypoint as red sphere (small like scenario_runner)
+                self.world.debug.draw_point(
+                    location,
+                    size=0.1,
+                    color=carla.Color(255, 0, 0),  # Red
+                    life_time=0.1
+                )
+
+                # Draw line connecting to previous waypoint
+                if prev_location is not None:
+                    self.world.debug.draw_line(
+                        prev_location,
+                        location,
+                        color=carla.Color(255, 255, 0),  # Yellow line
+                        life_time=0.1,
+                        thickness=0.02
+                    )
+
+                prev_location = location
+
+            # Always draw the final waypoint
+            if len(trajectory_msg.points) > 0:
+                final_point = trajectory_msg.points[-1]
+                x = final_point.pose.position.x
+                y = -final_point.pose.position.y
+                z = final_point.pose.position.z + 0.5
+
+                final_location = carla.Location(x, y, z)
+                self.world.debug.draw_point(
+                    final_location,
+                    size=0.2,
+                    color=carla.Color(0, 255, 0),  # Green for final point
+                    life_time=0.1
+                )
+
+                if prev_location is not None:
+                    self.world.debug.draw_line(
+                        prev_location,
+                        final_location,
+                        color=carla.Color(255, 255, 0),
+                        life_time=0.1,
+                        thickness=0.02
+                    )
+
+            self.loginfo(f"Drew waypoints in CARLA world (downsampled to ~{len(trajectory_msg.points)//downsample_factor} points)")
+
+        except Exception as e:
+            self.logwarn(f"Failed to draw waypoints in CARLA: {e}")
+
+    def publish_waypoints_from_trajectory(self, trajectory_msg):
         """
-        Calculate a route from the current location to 'goal'
-        """
-        self.loginfo("Calculating route to x={}, y={}, z={}".format(
-            goal.location.x,
-            goal.location.y,
-            goal.location.z))
+        Extract waypoints from Autoware trajectory and publish as Path.
 
-        grp = GlobalRoutePlanner(self.world.get_map(), sampling_resolution=1)
-        route = grp.trace_route(self.ego_vehicle.get_location(),
-                                carla.Location(goal.location.x,
-                                               goal.location.y,
-                                               goal.location.z))
-
-        return route
-
-    def publish_waypoints(self):
-        """
-        Publish the ROS message containing the waypoints
+        Trajectory points → downsample → publish as Path message
         """
         msg = Path()
         msg.header.frame_id = "map"
         msg.header.stamp = roscomp.ros_timestamp(self.get_time(), from_sec=True)
-        if self.current_route is not None:
-            for wp in self.current_route:
+
+        # Extract waypoints from trajectory points
+        # Downsample: keep every Nth point to reduce density
+        downsample_factor = max(1, len(trajectory_msg.points) // 15)  # Max 15 waypoints
+
+        for i, traj_point in enumerate(trajectory_msg.points):
+            if i % downsample_factor != 0:
+                continue
+
+            pose = PoseStamped()
+            pose.header.frame_id = "map"
+
+            # Extract position and orientation from trajectory point
+            pose.pose.position.x = traj_point.pose.position.x
+            pose.pose.position.y = traj_point.pose.position.y
+            pose.pose.position.z = traj_point.pose.position.z
+
+            pose.pose.orientation.x = traj_point.pose.orientation.x
+            pose.pose.orientation.y = traj_point.pose.orientation.y
+            pose.pose.orientation.z = traj_point.pose.orientation.z
+            pose.pose.orientation.w = traj_point.pose.orientation.w
+
+            msg.poses.append(pose)
+
+        # Always include final point
+        if len(trajectory_msg.points) > 0:
+            final_point = trajectory_msg.points[-1]
+            if len(msg.poses) == 0 or (
+                msg.poses[-1].pose.position.x != final_point.pose.position.x or
+                msg.poses[-1].pose.position.y != final_point.pose.position.y
+            ):
                 pose = PoseStamped()
-                pose.pose = trans.carla_transform_to_ros_pose(wp[0].transform)
+                pose.header.frame_id = "map"
+                pose.pose.position.x = final_point.pose.position.x
+                pose.pose.position.y = final_point.pose.position.y
+                pose.pose.position.z = final_point.pose.position.z
+                pose.pose.orientation = final_point.pose.orientation
                 msg.poses.append(pose)
 
         self.waypoint_publisher.publish(msg)
-        self.loginfo("Published {} waypoints.".format(len(msg.poses)))
+        self.loginfo(f"Published {len(msg.poses)} waypoints (downsampled from {len(trajectory_msg.points)})")
 
     def connect_to_carla(self):
-
         self.loginfo("Waiting for CARLA world (topic: /carla/world_info)...")
         try:
             self.wait_for_message(
@@ -243,8 +271,7 @@ class CarlaToRosWaypointConverter(CompatibleNode):
         host = self.get_param("host", "127.0.0.1")
         port = self.get_param("port", 2000)
         timeout = self.get_param("timeout", 10)
-        self.loginfo("CARLA world available. Trying to connect to {host}:{port}".format(
-            host=host, port=port))
+        self.loginfo(f"CARLA world available. Connecting to {host}:{port}")
 
         carla_client = carla.Client(host=host, port=port)
         carla_client.set_timeout(timeout)
@@ -255,27 +282,25 @@ class CarlaToRosWaypointConverter(CompatibleNode):
             self.logerr("Error while connecting to Carla: {}".format(e))
             raise e
 
-        self.loginfo("Connected to Carla.")
+        self.loginfo("✓ Connected to Carla")
 
 
 def main(args=None):
-    """
-    main function
-    """
+    """main function"""
     roscomp.init('carla_waypoint_publisher', args)
 
-    waypoint_converter = None
+    publisher = None
     try:
-        waypoint_converter = CarlaToRosWaypointConverter()
-        waypoint_converter.spin()
+        publisher = CarlaWaypointPublisher()
+        publisher.spin()
     except (RuntimeError, ROSException):
         pass
     except KeyboardInterrupt:
         roscomp.loginfo("User requested shut down.")
     finally:
         roscomp.loginfo("Shutting down.")
-        if waypoint_converter:
-            waypoint_converter.destroy()
+        if publisher:
+            publisher.destroy()
         roscomp.shutdown()
 
 

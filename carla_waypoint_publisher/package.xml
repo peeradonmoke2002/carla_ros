@@ -7,8 +7,10 @@
   <license>MIT</license>
 
   <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>carla_waypoint_types</exec_depend>
   <exec_depend>ros_compatibility</exec_depend>
+  <exec_depend>autoware_adapi_v1_msgs</exec_depend>
 
   <!-- ROS 1 DEPENDENCIES-->
   <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
