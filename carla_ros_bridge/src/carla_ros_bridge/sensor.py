@@ -155,7 +155,10 @@ class Sensor(Actor):
         """
         self._callback_active.acquire()
         if self.carla_actor.is_listening:
-            self.carla_actor.stop()
+            try:
+                self.carla_actor.stop()
+            except Exception:
+                pass
         super(Sensor, self).destroy()
 
     def _callback_sensor_data(self, carla_sensor_data):
