@@ -117,7 +117,7 @@ class CarlaRosBridge(CompatibleNode):
         self.debug_helper = DebugHelper(carla_world.debug, self)
 
         # Communication topics
-        self.clock_publisher = self.new_publisher(Clock, 'clock', 10)
+        self.clock_publisher = self.new_publisher(Clock, 'carla/clock', 10)
 
         self.status_publisher = CarlaStatusPublisher(
             self.carla_settings.synchronous_mode,
