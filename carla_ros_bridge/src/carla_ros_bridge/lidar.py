@@ -16,10 +16,6 @@ import numpy
 from carla_ros_bridge.sensor import Sensor, create_cloud
 
 from sensor_msgs.msg import PointCloud2, PointField
-from ros_compatibility.qos import (
-    QoSProfile,
-    ReliabilityPolicy)
-
 
 
 class Lidar(Sensor):
@@ -59,14 +55,7 @@ class Lidar(Sensor):
                                                   self.get_topic_prefix(),
                                                   qos_profile=10)
         self.listen()
-        self.channels = int(self.carla_actor.attributes.get('channels'))
-        
-    def _create_sensor_qos(self):
-        """Create QoS profile for sensor data with BEST_EFFORT reliability."""
-        qos = QoSProfile(depth=10)
-        qos.reliability = ReliabilityPolicy.BEST_EFFORT
-        return qos
-    
+
     def destroy(self):
         super(Lidar, self).destroy()
         self.node.destroy_publisher(self.lidar_publisher)
@@ -79,76 +68,23 @@ class Lidar(Sensor):
         :param carla_lidar_measurement: carla lidar measurement object
         :type carla_lidar_measurement: carla.LidarMeasurement
         """
-        # header = self.get_msg_header(timestamp=carla_lidar_measurement.timestamp)
-        header = self.get_msg_header(frame_id="velodyne_top", timestamp=carla_lidar_measurement.timestamp)
+        header = self.get_msg_header(timestamp=carla_lidar_measurement.timestamp)
         fields = [
-            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
-            PointField(name="intensity", offset=12, datatype=PointField.UINT8, count=1),
-            PointField(name="return_type", offset=13, datatype=PointField.UINT8, count=1),
-            PointField(name="channel", offset=14, datatype=PointField.UINT16, count=1),
+            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+            PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1)
         ]
 
-
-        # Use frombuffer instead of fromstring for better performance
-        # Note: frombuffer returns read-only array, so we need to make a copy
-        lidar_data = numpy.frombuffer(
+        lidar_data = numpy.fromstring(
             bytes(carla_lidar_measurement.raw_data), dtype=numpy.float32)
-        lidar_data = lidar_data.reshape(-1, 4).copy()  # Make writable copy
-
-        num_points = lidar_data.shape[0]
-
-        # Vectorized intensity processing (CARLA lidar intensity values are between 0 and 1)
-        intensity = numpy.clip(lidar_data[:, 3], 0, 1)
-        intensity = (intensity * 255).astype(numpy.uint8).reshape(-1, 1)
-
-        return_type = numpy.zeros((num_points, 1), dtype=numpy.uint8)
-
-        # Pre-allocate channel array for better performance
-        channel = numpy.zeros((num_points, 1), dtype=numpy.uint16)
-        offset = 0
-        for i in range(self.channels):
-            current_ring_points_count = carla_lidar_measurement.get_point_count(i)
-            channel[offset:offset+current_ring_points_count] = i
-            offset += current_ring_points_count
-
-        lidar_data = numpy.hstack((lidar_data[:, :3], intensity, return_type, channel))
+        lidar_data = numpy.reshape(
+            lidar_data, (int(lidar_data.shape[0] / 4), 4))
+        # we take the opposite of y axis
+        # (as lidar point are express in left handed coordinate system, and ros need right handed)
         lidar_data[:, 1] *= -1
-        dtype = [
-            ("x", "f4"),
-            ("y", "f4"),
-            ("z", "f4"),
-            ("intensity", "u1"),
-            ("return_type", "u1"),
-            ("channel", "u2"),
-        ]
-
-        structured_lidar_data = numpy.zeros(lidar_data.shape[0], dtype=dtype)
-        structured_lidar_data["x"] = lidar_data[:, 0]
-        structured_lidar_data["y"] = lidar_data[:, 1]
-        structured_lidar_data["z"] = lidar_data[:, 2]
-        structured_lidar_data["intensity"] = lidar_data[:, 3].astype(numpy.uint8)
-        structured_lidar_data["return_type"] = lidar_data[:, 4].astype(numpy.uint8)
-        structured_lidar_data["channel"] = lidar_data[:, 5].astype(numpy.uint16)
-
-        point_cloud_msg = create_cloud(header, fields, structured_lidar_data)
+        point_cloud_msg = create_cloud(header, fields, lidar_data)
         self.lidar_publisher.publish(point_cloud_msg)
-
-        # ring = numpy.empty((0,1), object)
-        
-        # for i in range(self.channels):
-        #     current_ring_points_count = carla_lidar_measurement.get_point_count(i)
-        #     ring = numpy.vstack((
-        #         ring,
-        #         numpy.full((current_ring_points_count, 1), i)))
-        
-        # lidar_data = numpy.hstack((lidar_data, ring))
-        # # we take the opposite of y axis
-        # # (as lidar point are express in left handed coordinate system, and ros need right handed)
-        # lidar_data[:, 1] *= -1
-        # point_cloud_msg = create_cloud(header, fields, lidar_data)
-        # self.lidar_publisher.publish(point_cloud_msg)
 
 
 class SemanticLidar(Sensor):

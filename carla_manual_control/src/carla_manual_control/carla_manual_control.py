@@ -93,7 +93,7 @@ class ManualControl(CompatibleNode):
         self.controller = KeyboardControl(self.role_name, self.hud, self)
 
         self.image_subscriber = self.new_subscription(
-            Image, "/carla/{}/rgb_view/image".format(self.role_name),
+            Image, "/carla/{}/CAM_VIEW/image".format(self.role_name),
             self.on_view_image, qos_profile=10)
 
         self.collision_subscriber = self.new_subscription(

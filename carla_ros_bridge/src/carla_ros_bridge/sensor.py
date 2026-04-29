@@ -139,7 +139,12 @@ class Sensor(Actor):
         return transform
 
     def publish_tf(self, pose, timestamp):
-        self._tf_broadcaster.sendTransform(self.get_ros_transform(pose, timestamp))
+        transform = self.get_ros_transform(pose, timestamp)
+        try:
+            self._tf_broadcaster.sendTransform(transform)
+        except roscomp.exceptions.ROSException:
+            if roscomp.ok():
+                self.node.logwarn("Sensor {} failed to send transform.".format(self.uid))
 
     def listen(self):
         self.carla_actor.listen(self._callback_sensor_data)
@@ -155,10 +160,7 @@ class Sensor(Actor):
         """
         self._callback_active.acquire()
         if self.carla_actor.is_listening:
-            try:
-                self.carla_actor.stop()
-            except Exception:
-                pass
+            self.carla_actor.stop()
         super(Sensor, self).destroy()
 
     def _callback_sensor_data(self, carla_sensor_data):
@@ -223,8 +225,7 @@ class Sensor(Actor):
              self.next_data_expected_time < timestamp):
             while True:
                 try:
-                    # Reduced timeout to match simulation tick rate (was 1.0s)
-                    carla_sensor_data = self.queue.get(timeout=0.15)
+                    carla_sensor_data = self.queue.get(timeout=1.0)
                     if carla_sensor_data.frame == frame:
                         self.node.logdebug("{}({}): process {}".format(self.__class__.__name__,
                                                                        self.get_id(), frame))
@@ -233,7 +234,7 @@ class Sensor(Actor):
                         self.sensor_data_updated(carla_sensor_data)
                         return
                     elif carla_sensor_data.frame < frame:
-                        self.node.logdebug("{}({}): skipping old frame {}, expected {}".format(
+                        self.node.logwarn("{}({}): skipping old frame {}, expected {}".format(
                             self.__class__.__name__,
                             self.get_id(),
                             carla_sensor_data.frame,

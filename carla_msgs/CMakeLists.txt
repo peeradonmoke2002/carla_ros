@@ -19,17 +19,13 @@ set(MSG_FILES
     CarlaActorInfo.msg
     CarlaActorList.msg
     CarlaControl.msg
-    CarlaObstacle.msg
     CarlaStatus.msg
     CarlaTrafficLightInfo.msg
     CarlaTrafficLightInfoList.msg
     CarlaTrafficLightStatus.msg
     CarlaTrafficLightStatusList.msg
     CarlaWalkerControl.msg
-    CarlaEgoVehicleSteering.msg
-    CarlaWeatherParameters.msg
-    CarlaSteeringCurve.msg
-)
+    CarlaWeatherParameters.msg)
 
 if(${ROS_VERSION} EQUAL 1)
   cmake_minimum_required(VERSION 2.8.3)
