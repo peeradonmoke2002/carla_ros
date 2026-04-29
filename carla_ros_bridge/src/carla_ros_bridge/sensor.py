@@ -139,7 +139,7 @@ class Sensor(Actor):
         return transform
 
     def publish_tf(self, pose, timestamp):
-        pass  # sensor TFs handled by sensor_kit_description
+        self._tf_broadcaster.sendTransform(self.get_ros_transform(pose, timestamp))
 
     def listen(self):
         self.carla_actor.listen(self._callback_sensor_data)
